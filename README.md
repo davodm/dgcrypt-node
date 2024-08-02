@@ -6,13 +6,13 @@ Dgcrypt is a simple Node.js library for encryption and decryption using AES-256-
 The Dgcrypt library is designed to work seamlessly across multiple platforms. You can find corresponding libraries for the following platforms:
 
 - **Android**: [Dgcrypt-Android](https://github.com/davodm/dgcrypt-android)
-- **PHP**: [Dgcrypt-Node](https://github.com/davodm/dgcrypt-php)
+- **PHP**: [Dgcrypt-PHP](https://github.com/davodm/dgcrypt-php)
 
 These libraries allow you to easily decrypt data that was encrypted on the backend using this PHP library, ensuring secure communication between your backend and client applications.
 
 ## Installation
 
-You can install the package via npm:
+You can install the package via npm, available for Node.js v16 and above:
 
 ```bash
 npm install @davodm/dgcrypt-node
