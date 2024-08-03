@@ -20,7 +20,7 @@
   "description": "A simple Nodejs library for encryption and decryption using AES-256-CBC to be usable in different language/devices.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/davodm/dgcrypt-node.git"
+    "url": "git+https://github.com/davodm/dgcrypt-node.git"
   },
   "bugs": {
     "url": "https://github.com/davodm/dgcrypt-node/issues"
