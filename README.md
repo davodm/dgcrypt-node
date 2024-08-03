@@ -37,11 +37,11 @@ console.log('Encrypted Data:', encryptedData);
 ```javascript
 const Dgcrypt = require('@davodm/dgcrypt-node');
 
-const dgcrypt = new Dgcrypt();
 const secretKey = 'your-32-character-long-key';
+const dgcrypt = new Dgcrypt(secretKey);
 const encryptedData = 'your-encrypted-data';
 
-const decryptedData = dgcrypt.decrypt(encryptedData, secretKey);
+const decryptedData = dgcrypt.decrypt(encryptedData);
 console.log('Decrypted Data:', decryptedData);
 ```
 
