@@ -31,7 +31,7 @@ npm install @davodm/dgcrypt-node
 const Dgcrypt = require('@davodm/dgcrypt-node');
 
 const dgcrypt = new Dgcrypt('aes-256-cbc'); // Specify the encryption method
-const secretKey = 'your-32-character-long-key';
+const secretKey = 'your-secret-key';
 const data = 'Hello, World!';
 
 const encryptedData = dgcrypt.encrypt(data, secretKey);
@@ -44,10 +44,10 @@ console.log('Encrypted Data:', encryptedData);
 const Dgcrypt = require('@davodm/dgcrypt-node');
 
 const dgcrypt = new Dgcrypt('aes-256-cbc'); // Specify the encryption method
-const secretKey = 'your-32-character-long-key';
+const secretKey = 'your-secret-key';
 const encryptedData = 'your-encrypted-data';
 
-const decryptedData = dgcrypt.decrypt(encryptedData, secretKey);
+const decryptedData = dgcrypt.setCipherMethod('aes-256-cbc').decrypt(encryptedData, secretKey);
 console.log('Decrypted Data:', decryptedData);
 ```
 
@@ -57,7 +57,7 @@ const Dgcrypt = require('@davodm/dgcrypt-node');
 
 const dgcrypt = new Dgcrypt();
 const generatedKey = dgcrypt.generateKey();
-console.log('Generated Key:', generatedKey.toString('hex')); // Display the key in hexadecimal format
+console.log('Generated Key:', generatedKey); // Display the key in hexadecimal format
 ```
 
 ## Testing
