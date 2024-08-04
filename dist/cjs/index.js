@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 class Dgcrypt {
   constructor(cipherMethod = "aes-256-cbc") {
+    this.supportedMethods = ["aes-256-cbc", "aes-256-gcm", "chacha20-poly1305"];
     this.setCipherMethod(cipherMethod);
     this.iv = null;
     this.key = null;
@@ -11,65 +12,65 @@ class Dgcrypt {
   /**
    * Sets the cipher method.
    * @param {string} method The cipher method (e.g., aes-256-cbc, aes-256-gcm, chacha20-poly1305)
+   * @return {Dgcrypt} The Dgcrypt instance
    */
   setCipherMethod(method) {
-    const supportedMethods = ["aes-256-cbc", "aes-256-gcm", "chacha20-poly1305"];
-    if (!supportedMethods.includes(method)) {
-      throw new Error(`Unsupported method. Supported methods: ${supportedMethods.join(", ")}`);
+    if (!this.supportedMethods.includes(method)) {
+      throw new Error("Cipher method not supported");
     }
     this.cipherMethod = method;
+    return this;
   }
 
   /**
    * Sets the secret key for encryption and decryption.
-   * @param {string} key The secret key (must be 32 characters)
+   * The key is hashed using SHA-256 and truncated to 32 bytes.
+   *
+   * @param {string} key The secret key
+   * @return {Dgcrypt} The Dgcrypt instance
    */
   setKey(key) {
-    if (key.length !== 32) {
-      throw new Error("Secret key should be 32 characters");
-    }
-    this.key = Buffer.from(key, 'utf8');
+    this.key = crypto.createHash("sha256").update(key).digest("hex").slice(0, 32);
+    return this;
   }
 
   /**
-   * Auto-generates a secure random key.
-   * @return {Buffer} The generated key
+   * Auto-generates a secure random key in hex format (32 bytes).
+   * @return {String} The generated key
    */
   generateKey() {
-    this.key = crypto.randomBytes(32);
-    return this.key;
+    this.setKey(crypto.randomBytes(32).toString("hex"));
+    return this.key.toString("hex");
   }
 
   /**
    * Sets the initialization vector (IV) for encryption.
    * If no IV is provided, a secure random IV is generated.
    * @param {string|null} iv The IV (must be 16 bytes for AES-CBC, 12 bytes for AES-GCM and ChaCha20)
+   * @return {Dgcrypt} The Dgcrypt instance
    */
   setIV(iv = null) {
-    let ivLength;
-    if (this.cipherMethod.includes("gcm") || this.cipherMethod.includes("chacha20")) {
-      ivLength = 12; // GCM and ChaCha20-Poly1305 use 12 bytes IV
-    } else {
-      ivLength = 16; // CBC uses 16 bytes IV
-    }
+    // Determine the IV length based on the cipher method
+    const ivLength = crypto.getCipherInfo(this.cipherMethod).ivLength;
     if (!iv) {
       this.iv = crypto.randomBytes(ivLength);
     } else {
-      if (iv.length !== ivLength) {
-        throw new Error(`IV should be ${ivLength} bytes`);
+      if (Buffer.from(iv, "utf8").length !== ivLength) {
+        throw new Error(`IV length should be ${ivLength} bytes for ${this.cipherMethod}`);
       }
-      this.iv = Buffer.from(iv, 'utf8');
+      this.iv = Buffer.from(iv, "utf8");
     }
+    return this;
   }
 
   /**
    * Encrypts a given string using the specified method.
-   * @param {string} data The input string to encrypt
+   * @param {string} string The input string to encrypt
    * @param {string|null} secretKey The secret key for encryption
    * @param {boolean} resetIV Whether to reset the IV after encryption
    * @return {string} The encrypted string, base64 encoded
    */
-  encrypt(data, secretKey = null, resetIV = false) {
+  encrypt(string, secretKey = null, resetIV = true) {
     if (secretKey) {
       this.setKey(secretKey);
     } else if (!this.key) {
@@ -78,14 +79,33 @@ class Dgcrypt {
     if (!this.iv) {
       this.setIV();
     }
-    const cipher = crypto.createCipheriv(this.cipherMethod, this.key, this.iv);
-    let encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
-    let authTag = Buffer.alloc(0);
-    if (this.cipherMethod.includes('gcm') || this.cipherMethod.includes('chacha20')) {
-      authTag = cipher.getAuthTag();
+    let cipher,
+      encrypted,
+      tag = null;
+
+    // Encrypt the string using the specified method
+    switch (this.cipherMethod) {
+      case "aes-256-cbc":
+        cipher = crypto.createCipheriv(this.cipherMethod, this.key, this.iv);
+        encrypted = Buffer.concat([cipher.update(string), cipher.final()]);
+        break;
+      case "aes-256-gcm":
+      case "chacha20-poly1305":
+        cipher = crypto.createCipheriv(this.cipherMethod, this.key, this.iv);
+        encrypted = Buffer.concat([cipher.update(string), cipher.final()]);
+        tag = cipher.getAuthTag();
+        break;
+      default:
+        throw new Error("Unsupported cipher method");
     }
-    const combined = Buffer.concat([this.iv, authTag, encrypted]);
-    const result = combined.toString('base64');
+    let encryptedString = Buffer.from(encrypted).toString("hex");
+    // Base64 encode the encrypted string
+    encryptedString = Buffer.from(encryptedString).toString("base64");
+
+    // Prepend the IV and tag (if any) to the encrypted string
+    let result = this.iv.toString("hex") + (tag ? tag.toString("hex") : "") + encryptedString;
+    // Base64 encode the result
+    result = Buffer.from(result).toString("base64");
     if (resetIV) {
       this.iv = null;
     }
@@ -94,29 +114,50 @@ class Dgcrypt {
 
   /**
    * Decrypts a given string using the specified method.
-   * @param {string} encrypted The encrypted string to decrypt (base64 encoded)
+   * @param {string} string The encrypted string to decrypt (base64 encoded)
    * @param {string|null} secretKey The secret key for decryption
    * @return {string} The decrypted string
    */
-  decrypt(encrypted, secretKey = null) {
+  decrypt(string, secretKey = null) {
     if (secretKey) {
       this.setKey(secretKey);
     } else if (!this.key) {
       throw new Error("Secret key is not defined");
     }
-    const decoded = Buffer.from(encrypted, 'base64');
-    const ivLength = this.cipherMethod.includes("gcm") || this.cipherMethod.includes("chacha20") ? 12 : 16;
-    const authTagLength = this.cipherMethod.includes("gcm") || this.cipherMethod.includes("chacha20") ? 16 : 0;
-    const iv = decoded.subarray(0, ivLength);
-    const authTag = authTagLength ? decoded.subarray(ivLength, ivLength + authTagLength) : null;
-    const encryptedText = decoded.subarray(ivLength + authTagLength);
-    const decipher = crypto.createDecipheriv(this.cipherMethod, this.key, iv);
-    if (authTag) {
-      decipher.setAuthTag(authTag);
+
+    // Decode the base64 encoded string
+    let decodedString = Buffer.from(string, "base64").toString("utf8");
+
+    // determine the IV length and tag length based on the cipher method
+    const ivLength = crypto.getCipherInfo(this.cipherMethod).ivLength;
+    const tagLength = this.cipherMethod === "aes-256-gcm" || this.cipherMethod === "chacha20-poly1305" ? 16 : 0;
+    // Extract the IV and tag (if any) from the decoded string
+    const iv = Buffer.from(decodedString.slice(0, ivLength * 2), "hex");
+    const tag = tagLength > 0 ? Buffer.from(decodedString.slice(ivLength * 2, (ivLength + tagLength) * 2), "hex") : null;
+    let encryptedData = decodedString.slice((ivLength + tagLength) * 2);
+    // Decode the base64 encoded encrypted data
+    encryptedData = Buffer.from(Buffer.from(encryptedData, "base64").toString("utf8"), "hex");
+    let decipher, decrypted;
+    // Decrypt the string using the specified method
+    try {
+      switch (this.cipherMethod) {
+        case "aes-256-cbc":
+          decipher = crypto.createDecipheriv(this.cipherMethod, this.key, iv);
+          decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+          break;
+        case "aes-256-gcm":
+        case "chacha20-poly1305":
+          decipher = crypto.createDecipheriv(this.cipherMethod, this.key, iv);
+          decipher.setAuthTag(tag);
+          decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+          break;
+        default:
+          throw new Error("Unsupported cipher method");
+      }
+    } catch (e) {
+      throw new Error("Decryption failed. Data may have been tampered with.");
     }
-    let decrypted = decipher.update(encryptedText, null, 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    return decrypted.toString("utf8");
   }
 }
 module.exports = Dgcrypt;
